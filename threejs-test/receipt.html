@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Interactive 3D Receipt – Verlet Cloth</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden}
+body{cursor:grab;background:#eae7e0}
+body.dragging{cursor:grabbing}
+#hint{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);
+  font:13px/1 'Courier New',monospace;color:#b0a898;pointer-events:none;user-select:none;
+  text-shadow:0 1px 0 #fff}
+</style>
+</head>
+<body>
+<div id="hint">🖱 Left-click &amp; drag to grab, bend, and fold the receipt</div>
+
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+/* ================================================================
+   CONFIG
+   ================================================================ */
+const COLS      = 24;
+const ROWS      = 72;
+const SP        = 0.038;          // particle spacing
+const DAMP      = 0.97;           // velocity damping
+const ITERS     = 18;             // constraint iterations
+const DT        = 1 / 60;
+const GRAV      = new THREE.Vector3(0, -9.8, 0);
+const CW        = (COLS - 1) * SP;
+const CH        = (ROWS - 1) * SP;
+
+/* ================================================================
+   REUSABLE TEMP VECTORS (zero GC in hot loop)
+   ================================================================ */
+const _d = new THREE.Vector3();
+const _v = new THREE.Vector3();
+
+/* ================================================================
+   PARTICLE
+   ================================================================ */
+class Particle {
+  constructor(x, y, z) {
+    this.pos   = new THREE.Vector3(x, y, z);
+    this.prev  = new THREE.Vector3(x, y, z);
+    this.acc   = new THREE.Vector3();
+    this.pin   = false;   // permanently pinned
+    this.held  = false;   // grabbed by mouse
+  }
+  push(f) { this.acc.add(f); }
+  step(dt) {
+    if (this.pin || this.held) return;
+    _v.subVectors(this.pos, this.prev).multiplyScalar(DAMP);
+    this.prev.copy(this.pos);
+    this.pos.add(_v).addScaledVector(this.acc, dt * dt);
+    this.acc.set(0, 0, 0);
+  }
+}
+
+/* ================================================================
+   CONSTRAINT
+   ================================================================ */
+class Link {
+  constructor(a, b, rest, stiff) {
+    this.a = a; this.b = b;
+    this.rest = rest; this.stiff = stiff;
+  }
+  solve() {
+    _d.subVectors(this.b.pos, this.a.pos);
+    const len = _d.length();
+    if (len < 1e-7) return;
+    const fixedA = this.a.pin || this.a.held;
+    const fixedB = this.b.pin || this.b.held;
+    if (fixedA && fixedB) return;
+    const err = (1 - this.rest / len) * this.stiff;
+    if (fixedA)      { this.b.pos.addScaledVector(_d, -err); }
+    else if (fixedB) { this.a.pos.addScaledVector(_d,  err); }
+    else             { const h = err * 0.5;
+                       this.a.pos.addScaledVector(_d,  h);
+                       this.b.pos.addScaledVector(_d, -h); }
+  }
+}
+
+/* ================================================================
+   BUILD CLOTH
+   ================================================================ */
+const P = [];
+const C = [];
+const I = (i, j) => j * COLS + i;
+
+for (let j = 0; j < ROWS; j++)
+  for (let i = 0; i < COLS; i++) {
+    const p = new Particle(i * SP - CW / 2, CH / 2 - j * SP, 0);
+    if (j === 0) p.pin = true;               // ★ entire top row pinned
+    P.push(p);
+  }
+
+// gentle initial curl – like it just came out of a thermal printer
+for (let j = 1; j < ROWS; j++)
+  for (let i = 0; i < COLS; i++) {
+    const p = P[I(i, j)];
+    const t = j / (ROWS - 1);
+    p.pos.z = t * t * 0.05 * Math.sin(i / (COLS - 1) * Math.PI);
+    p.prev.copy(p.pos);
+  }
+
+// structural (horizontal + vertical)
+for (let j = 0; j < ROWS; j++)
+  for (let i = 0; i < COLS; i++) {
+    if (i < COLS - 1) C.push(new Link(P[I(i,j)], P[I(i+1,j)], SP, 1.0));
+    if (j < ROWS - 1) C.push(new Link(P[I(i,j)], P[I(i,j+1)], SP, 1.0));
+  }
+
+// shear (diagonals)
+const D = SP * Math.SQRT2;
+for (let j = 0; j < ROWS - 1; j++)
+  for (let i = 0; i < COLS - 1; i++) {
+    C.push(new Link(P[I(i,j)], P[I(i+1,j+1)], D, 0.55));
+    C.push(new Link(P[I(i+1,j)], P[I(i,j+1)], D, 0.55));
+  }
+
+// bend (skip-one)
+const B = SP * 2;
+for (let j = 0; j < ROWS; j++)
+  for (let i = 0; i < COLS; i++) {
+    if (i < COLS - 2) C.push(new Link(P[I(i,j)], P[I(i+2,j)], B, 0.3));
+    if (j < ROWS - 2) C.push(new Link(P[I(i,j)], P[I(i,j+2)], B, 0.3));
+  }
+
+/* ================================================================
+   SIMULATION
+   ================================================================ */
+const _w = new THREE.Vector3();
+function simulate(t) {
+  _w.set(
+    Math.sin(t * 0.45) * 0.35 + Math.sin(t * 1.9) * 0.12,
+    0,
+    Math.cos(t * 0.7)  * 0.2
+  );
+  for (const p of P) {
+    p.push(GRAV);
+    if (!p.pin && !p.held) p.push(_w);
+  }
+  for (const p of P) p.step(DT);
+  for (let n = 0; n < ITERS; n++)
+    for (const c of C) c.solve();
+}
+
+/* ================================================================
+   RECEIPT TEXTURE  (Canvas 2D → Three.js CanvasTexture)
+   ================================================================ */
+function makeTexture() {
+  const cv = document.createElement('canvas');
+  cv.width = 480; cv.height = 1500;
+  const g = cv.getContext('2d');
+
+  // warm thermal-paper background
+  g.fillStyle = '#faf7ee';
+  g.fillRect(0, 0, cv.width, cv.height);
+
+  // subtle printer noise
+  for (let n = 0; n < 60000; n++) {
+    g.fillStyle = `rgba(0,0,0,${(Math.random() * 0.022).toFixed(4)})`;
+    g.fillRect(Math.random() * cv.width | 0, Math.random() * cv.height | 0, 1, 1);
+  }
+
+  // faint horizontal feed-lines
+  g.strokeStyle = 'rgba(0,0,0,0.018)';
+  g.lineWidth = 1;
+  for (let ly = 0; ly < cv.height; ly += 3) {
+    g.beginPath(); g.moveTo(0, ly); g.lineTo(cv.width, ly); g.stroke();
+  }
+
+  const MX = 38, HW = cv.width / 2;
+  let y = 42;
+
+  const ctr = (txt, font, col) => {
+    g.font = font; g.fillStyle = col || '#333';
+    g.textAlign = 'center'; g.fillText(txt, HW, y);
+  };
+  const lr = (l, r, font, col) => {
+    g.font = font; g.fillStyle = col || '#333';
+    g.textAlign = 'left';  g.fillText(l, MX, y);
+    g.textAlign = 'right'; g.fillText(r, cv.width - MX, y);
+  };
+  const hr = () => {
+    y += 5;
+    g.save(); g.strokeStyle = '#bbb'; g.lineWidth = 1;
+    g.setLineDash([5, 3]);
+    g.beginPath(); g.moveTo(MX, y); g.lineTo(cv.width - MX, y); g.stroke();
+    g.restore(); y += 12;
+  };
+  const dhr = () => {
+    y += 5;
+    g.strokeStyle = '#666'; g.lineWidth = 1.5; g.setLineDash([]);
+    g.beginPath(); g.moveTo(MX, y); g.lineTo(cv.width - MX, y); g.stroke();
+    g.beginPath(); g.moveTo(MX, y + 3); g.lineTo(cv.width - MX, y + 3); g.stroke();
+    y += 12;
+  };
+
+  // ─── Header ───
+  ctr('╔═══════════════════════════════════╗', '13px monospace', '#999');
+  y += 24;
+  ctr('★   3D  GRAPHICS  MEGA  STORE   ★', 'bold 20px monospace', '#1a1a1a');
+  y += 22;
+  ctr('Quality Since 1993 · WebGL District', '11px monospace', '#999');
+  y += 16;
+  ctr('GPU City, Shader County  000000', '11px monospace', '#999');
+  y += 20; hr();
+
+  ctr('RECEIPT / INVOICE', 'bold 14px monospace', '#444');
+  y += 10;
+  ctr('2026-04-16  14:30:07   #0042069', '11px monospace', '#888');
+  y += 15;
+  ctr('Cashier: GL_Renderer #007', '11px monospace', '#888');
+  y += 15;
+  ctr('Reg: VAO-42069', '11px monospace', '#888');
+  y += 8; hr();
+
+  // ─── Items ───
+  const items = [
+    ['Vertex Buffer Object ×1',        '¥29.99'],
+    ['Fragment Shader ×2',             '¥39.50'],
+    ['MVP Matrix (4×4) ×1',            '¥99.99'],
+    ['Real-time Ray Tracing ×1',      '¥299.99'],
+    ['Texture Sampler ×3',             '¥15.00'],
+    ['Normal Map (4K HDR) ×1',         '¥49.99'],
+    ['Ambient Occlusion ×2',           '¥35.00'],
+    ['PBR Material Pack ×1',           '¥79.99'],
+    ['MSAA 8x Anti-Aliasing ×1',       '¥59.99'],
+    ['Shadow Map 2048² ×2',           '¥45.00'],
+    ['Compute Shader ×1',              '¥88.88'],
+    ['Draw Call Optimizer ×1',         '¥66.66'],
+  ];
+  for (const [nm, pr] of items) { lr(nm, pr, '11.5px monospace'); y += 18; }
+
+  y += 4; hr();
+  lr('Subtotal:',           '¥909.98',  '12px monospace'); y += 18;
+  lr('Tax (VAT 13%):',     '¥118.30',  '12px monospace'); y += 6;
+  dhr();
+  lr('TOTAL:', '¥1,028.28', 'bold 17px monospace', '#111'); y += 6;
+  dhr();
+
+  // ─── Payment ───
+  ctr('Visa ****4096', '11px monospace', '#888'); y += 16;
+  ctr('Auth: GL_ARB_Everything', '11px monospace', '#888'); y += 8; hr();
+
+  // ─── Barcode ───
+  const bw = 200, bh = 40, bx = HW - bw / 2;
+  g.fillStyle = '#333';
+  for (let x = 0; x < bw; x += 2) {
+    if (Math.random() > 0.32)
+      g.fillRect(bx + x, y, Math.random() > 0.55 ? 2 : 1, bh);
+  }
+  y += bh + 8;
+  ctr('4 0 0 6 3 8 0 0 7 7 4 2 9', '10px monospace', '#888'); y += 10; hr();
+
+  // ─── QR-like block ───
+  const qd = [
+    [1,1,1,0,1,0,1,0,1,1,1],
+    [1,0,1,0,0,0,0,0,1,0,1],
+    [1,1,1,0,1,0,1,0,1,1,1],
+    [0,0,0,0,1,1,0,0,0,0,0],
+    [1,1,0,1,0,1,1,0,0,1,0],
+    [0,1,1,0,1,0,1,1,1,0,1],
+    [1,0,0,1,0,1,0,0,0,1,1],
+    [0,0,0,0,0,0,0,0,0,0,0],
+    [1,1,1,0,0,1,0,1,0,1,1],
+    [1,0,1,1,1,0,1,0,1,0,1],
+    [1,1,1,0,1,1,1,0,1,1,1],
+  ];
+  const cs = 5, qx = HW - (qd[0].length * cs) / 2;
+  for (let r = 0; r < qd.length; r++)
+    for (let cc = 0; cc < qd[r].length; cc++)
+      if (qd[r][cc]) { g.fillStyle = '#333'; g.fillRect(qx + cc * cs, y + r * cs, cs, cs); }
+  y += qd.length * cs + 6;
+  ctr('Scan for GPU warranty info', '10px monospace', '#aaa');
+  y += 14; hr();
+
+  // ─── Footer ───
+  ctr('Thank you for shopping!', 'bold 14px monospace', '#333'); y += 20;
+  ctr('May your FPS be ever high', '11px monospace', '#888'); y += 16;
+  ctr('and your draw calls few!', '11px monospace', '#888'); y += 16;
+  ctr('* No refunds on used shaders *', '10px monospace', '#aaa'); y += 20;
+  ctr('=== CUSTOMER COPY ===', 'bold 13px monospace', '#666'); y += 22;
+  ctr('╚═══════════════════════════════════╝', '13px monospace', '#999');
+
+  // torn bottom edge
+  g.globalCompositeOperation = 'destination-out';
+  g.beginPath(); g.moveTo(cv.width, cv.height);
+  for (let x = cv.width; x >= 0; x -= 5)
+    g.lineTo(x, cv.height - 2 - Math.random() * 14);
+  g.lineTo(0, cv.height); g.closePath(); g.fill();
+
+  const tex = new THREE.CanvasTexture(cv);
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  return tex;
+}
+
+/* ================================================================
+   THREE.JS SCENE
+   ================================================================ */
+const scene    = new THREE.Scene();
+scene.background = new THREE.Color(0xf0ede6);
+
+const camera   = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 0.1, 50);
+camera.position.set(0, 0.4, 4.8);
+camera.lookAt(0, 0.4, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
+renderer.toneMapping       = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+document.body.appendChild(renderer.domElement);
+
+// ── Lights ──
+scene.add(new THREE.AmbientLight(0xfff8ee, 0.5));
+scene.add(new THREE.HemisphereLight(0xffffff, 0xe0d8c8, 0.35));
+
+const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+sun.position.set(3, 5, 4);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.camera.near   = 0.5;
+sun.shadow.camera.far    = 15;
+sun.shadow.camera.left   = -2.5;
+sun.shadow.camera.right  =  2.5;
+sun.shadow.camera.top    =  4;
+sun.shadow.camera.bottom = -3;
+sun.shadow.bias = -0.001;
+scene.add(sun);
+
+const fill = new THREE.DirectionalLight(0xdde8ff, 0.28);
+fill.position.set(-3, 2, 3);
+scene.add(fill);
+
+// ── Shadow catcher ──
+const shadowPlane = new THREE.Mesh(
+  new THREE.PlaneGeometry(10, 10),
+  new THREE.ShadowMaterial({ opacity: 0.10 })
+);
+shadowPlane.position.z = -0.45;
+shadowPlane.receiveShadow = true;
+scene.add(shadowPlane);
+
+/* ================================================================
+   CLOTH MESH
+   ================================================================ */
+const geo  = new THREE.BufferGeometry();
+const posA = new Float32Array(COLS * ROWS * 3);
+const uvA  = new Float32Array(COLS * ROWS * 2);
+
+for (let j = 0; j < ROWS; j++)
+  for (let i = 0; i < COLS; i++) {
+    const k = j * COLS + i;
+    uvA[k * 2]     = i / (COLS - 1);
+    uvA[k * 2 + 1] = 1 - j / (ROWS - 1);
+  }
+
+const tri = [];
+for (let j = 0; j < ROWS - 1; j++)
+  for (let i = 0; i < COLS - 1; i++) {
+    const a = j * COLS + i, b = a + 1, c = a + COLS, dd = c + 1;
+    tri.push(a, b, dd, a, dd, c);
+  }
+
+geo.setIndex(tri);
+geo.setAttribute('position', new THREE.BufferAttribute(posA, 3));
+geo.setAttribute('uv',       new THREE.BufferAttribute(uvA,  2));
+
+const mat = new THREE.MeshStandardMaterial({
+  map:           makeTexture(),
+  side:          THREE.DoubleSide,
+  roughness:     0.84,
+  metalness:     0.0,
+  color:         new THREE.Color(0xfbf8f0),
+  alphaTest:     0.35,
+});
+
+const mesh = new THREE.Mesh(geo, mat);
+mesh.castShadow    = true;
+mesh.receiveShadow = true;
+scene.add(mesh);
+
+// metal clip at the top
+const clipMat = new THREE.MeshStandardMaterial({ color: 0xbcbcbc, metalness: 0.9, roughness: 0.12 });
+const bar = new THREE.Mesh(new THREE.BoxGeometry(CW + 0.08, 0.028, 0.04), clipMat);
+bar.position.set(0, CH / 2 + 0.014, 0);
+bar.castShadow = true;
+scene.add(bar);
+for (const sx of [-1, 1]) {
+  const clamp = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.09, 0.06), clipMat);
+  clamp.position.set(sx * CW / 2, CH / 2 + 0.014, 0);
+  clamp.castShadow = true;
+  scene.add(clamp);
+}
+
+/* ================================================================
+   SYNC PARTICLES → GEOMETRY
+   ================================================================ */
+function sync() {
+  const a = geo.attributes.position.array;
+  for (let i = 0; i < P.length; i++) {
+    a[i * 3]     = P[i].pos.x;
+    a[i * 3 + 1] = P[i].pos.y;
+    a[i * 3 + 2] = P[i].pos.z;
+  }
+  geo.attributes.position.needsUpdate = true;
+  geo.computeVertexNormals();
+}
+
+/* ================================================================
+   MOUSE INTERACTION
+   ================================================================ */
+const rc    = new THREE.Raycaster();
+const m2    = new THREE.Vector2();
+const gPlan = new THREE.Plane();
+const gOff  = new THREE.Vector3();
+let grabbed = null;
+
+function mouseRay(e) {
+  m2.x =  (e.clientX / innerWidth)  * 2 - 1;
+  m2.y = -(e.clientY / innerHeight) * 2 + 1;
+  rc.setFromCamera(m2, camera);
+  return rc.ray;
+}
+
+function nearest(ray) {
+  let best = null, bd = 0.22;
+  const t = new THREE.Vector3();
+  for (const p of P) {
+    if (p.pin) continue;
+    ray.closestPointToPoint(p.pos, t);
+    const d = t.distanceTo(p.pos);
+    if (d < bd) { bd = d; best = p; }
+  }
+  return best;
+}
+
+addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+  const ray = mouseRay(e);
+  const p = nearest(ray);
+  if (!p) return;
+  grabbed = p;
+  p.held = true;
+  document.body.classList.add('dragging');
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  gPlan.setFromNormalAndCoplanarPoint(dir.negate(), p.pos);
+  const hit = new THREE.Vector3();
+  ray.intersectPlane(gPlan, hit);
+  gOff.subVectors(p.pos, hit);
+});
+
+addEventListener('mousemove', e => {
+  if (!grabbed) return;
+  const ray = mouseRay(e);
+  const hit = new THREE.Vector3();
+  if (!ray.intersectPlane(gPlan, hit)) return;
+  hit.add(gOff);
+  // smoothly drag – store velocity for natural release
+  grabbed.prev.copy(grabbed.pos);
+  grabbed.pos.copy(hit);
+});
+
+function release() {
+  if (grabbed) { grabbed.held = false; grabbed = null; }
+  document.body.classList.remove('dragging');
+}
+addEventListener('mouseup', release);
+addEventListener('mouseleave', release);
+
+/* ================================================================
+   RESIZE
+   ================================================================ */
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+/* ================================================================
+   RENDER LOOP
+   ================================================================ */
+const clock = new THREE.Clock();
+(function loop() {
+  requestAnimationFrame(loop);
+  simulate(clock.getElapsedTime());
+  sync();
+  renderer.render(scene, camera);
+})();
+
+</script>
+</body>
+</html>

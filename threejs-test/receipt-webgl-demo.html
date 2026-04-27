@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Receipt WebGL Demo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #f7f7f4;
+        --ink: #151515;
+        --muted: rgba(21, 21, 21, 0.62);
+        --line: rgba(21, 21, 21, 0.12);
+        --accent: #cb5f28;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+      }
+
+      body {
+        margin: 0;
+        overflow: hidden;
+        font-family: "IBM Plex Sans", sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top left, rgba(255, 255, 255, 0.98), transparent 36%),
+          linear-gradient(180deg, #ffffff 0%, #f7f7f4 100%);
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background-image:
+          linear-gradient(rgba(0, 0, 0, 0.02) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(0, 0, 0, 0.02) 1px, transparent 1px);
+        background-size: 28px 28px;
+        mask-image: radial-gradient(circle at center, black 44%, transparent 88%);
+      }
+
+      #app {
+        position: relative;
+        width: 100%;
+        height: 100%;
+      }
+
+      canvas.webgl {
+        display: block;
+        width: 100%;
+        height: 100%;
+        cursor: grab;
+      }
+
+      canvas.webgl.is-grabbing {
+        cursor: grabbing;
+      }
+
+      .hud {
+        position: absolute;
+        top: 24px;
+        left: 24px;
+        display: grid;
+        gap: 14px;
+        max-width: min(420px, calc(100vw - 48px));
+        z-index: 2;
+        pointer-events: none;
+      }
+
+      .eyebrow {
+        margin: 0;
+        font-size: 0.76rem;
+        letter-spacing: 0.24em;
+        text-transform: uppercase;
+        color: rgba(21, 21, 21, 0.54);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(2.4rem, 5vw, 4.2rem);
+        line-height: 0.96;
+        max-width: 10ch;
+      }
+
+      .hud p {
+        margin: 0;
+        line-height: 1.7;
+        color: var(--muted);
+        max-width: 34rem;
+      }
+
+      .badge-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .badge {
+        padding: 10px 14px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.84);
+        backdrop-filter: blur(12px);
+        font-size: 0.85rem;
+        box-shadow: 0 14px 30px rgba(0, 0, 0, 0.06);
+      }
+
+      .legend {
+        position: absolute;
+        right: 24px;
+        top: 24px;
+        width: min(320px, calc(100vw - 48px));
+        padding: 18px;
+        border-radius: 24px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.82);
+        backdrop-filter: blur(16px);
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.08);
+        z-index: 2;
+        pointer-events: none;
+      }
+
+      .legend strong,
+      .legend span {
+        display: block;
+      }
+
+      .legend strong {
+        font-size: 0.82rem;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: rgba(21, 21, 21, 0.54);
+      }
+
+      .legend ul {
+        list-style: none;
+        padding: 0;
+        margin: 14px 0 0;
+        display: grid;
+        gap: 10px;
+      }
+
+      .legend li {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        padding-top: 10px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
+
+      .legend li em {
+        font-style: normal;
+        color: var(--ink);
+      }
+
+      .tip {
+        position: absolute;
+        left: 24px;
+        bottom: 24px;
+        padding: 12px 16px;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.85);
+        backdrop-filter: blur(16px);
+        color: var(--muted);
+        font-size: 0.9rem;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.08);
+        z-index: 2;
+        pointer-events: none;
+      }
+
+      @media (max-width: 840px) {
+        .legend {
+          top: auto;
+          bottom: 92px;
+        }
+
+        .hud {
+          max-width: min(420px, calc(100vw - 32px));
+          left: 16px;
+          top: 16px;
+        }
+
+        .legend,
+        .tip {
+          right: 16px;
+          left: 16px;
+          width: auto;
+        }
+
+        .tip {
+          bottom: 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div class="hud">
+        <p class="eyebrow">Three.js / WebGL / Verlet Paper</p>
+        <h1>Receipt UI with physical drag, bend, fold and rebound</h1>
+        <p>
+          顶边整条固定，主体下半部分保持柔性纸张形变。左键抓住小票任意中下部位置拖拽，就能看到自然摆动、褶皱和回弹。
+        </p>
+        <div class="badge-row">
+          <span class="badge">Top Edge Fully Pinned</span>
+          <span class="badge">Soft Paper Response</span>
+          <span class="badge">Raycast Grab</span>
+        </div>
+      </div>
+
+      <aside class="legend">
+        <strong>Constraints</strong>
+        <ul>
+          <li><span>顶边</span><em>整条约束固定</em></li>
+          <li><span>鼠标</span><em>左键抓取拖拽</em></li>
+          <li><span>纸张</span><em>热敏纸，不是布料</em></li>
+          <li><span>性能</span><em>桌面浏览器流畅优先</em></li>
+        </ul>
+      </aside>
+
+      <div class="tip">左键拖动小票下半部分，松开后观察纸张的回弹和余振。</div>
+    </div>
+
+    <script type="module">
+      import * as THREE from "https://unpkg.com/three@0.165.0/build/three.module.js";
+
+      const container = document.getElementById("app");
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xf7f7f4);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.domElement.className = "webgl";
+      container.appendChild(renderer.domElement);
+
+      const camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 100);
+      camera.position.set(0, 1.0, 9.6);
+      camera.lookAt(0, -1.15, 0);
+
+      const ambient = new THREE.HemisphereLight(0xffffff, 0xd8d2ca, 1.1);
+      scene.add(ambient);
+
+      const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
+      keyLight.position.set(2.8, 5.2, 4.8);
+      keyLight.castShadow = true;
+      keyLight.shadow.mapSize.set(2048, 2048);
+      keyLight.shadow.camera.near = 0.1;
+      keyLight.shadow.camera.far = 20;
+      keyLight.shadow.camera.left = -8;
+      keyLight.shadow.camera.right = 8;
+      keyLight.shadow.camera.top = 8;
+      keyLight.shadow.camera.bottom = -8;
+      scene.add(keyLight);
+
+      const fillLight = new THREE.DirectionalLight(0xfff6e7, 0.85);
+      fillLight.position.set(-4.4, 2.8, 6.2);
+      scene.add(fillLight);
+
+      const ground = new THREE.Mesh(
+        new THREE.PlaneGeometry(30, 30),
+        new THREE.ShadowMaterial({ color: 0x000000, opacity: 0.11 })
+      );
+      ground.rotation.x = -Math.PI / 2;
+      ground.position.y = -4.15;
+      ground.receiveShadow = true;
+      scene.add(ground);
+
+      const backdrop = new THREE.Mesh(
+        new THREE.PlaneGeometry(24, 18),
+        new THREE.MeshBasicMaterial({ color: 0xfaf9f6 })
+      );
+      backdrop.position.set(0, 0, -5.8);
+      scene.add(backdrop);
+
+      const clothWidth = 3.0;
+      const clothHeight = 4.9;
+      const segX = 26;
+      const segY = 42;
+      const restX = clothWidth / segX;
+      const restY = clothHeight / segY;
+      const iterations = 6;
+      const gravity = new THREE.Vector3(0, -0.014, 0);
+      const dragDamping = 0.988;
+      const windBase = 0.0009;
+      const grabFollowStrength = 0.72;
+
+      const tempA = new THREE.Vector3();
+      const tempB = new THREE.Vector3();
+      const tempC = new THREE.Vector3();
+      const pointer = new THREE.Vector2();
+      const raycaster = new THREE.Raycaster();
+      const dragPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+      const planePoint = new THREE.Vector3();
+
+      function indexOf(x, y) {
+        return y * (segX + 1) + x;
+      }
+
+      const particles = [];
+      for (let y = 0; y <= segY; y += 1) {
+        for (let x = 0; x <= segX; x += 1) {
+          const px = (x / segX - 0.5) * clothWidth;
+          const py = clothHeight / 2 - (y / segY) * clothHeight;
+          const pos = new THREE.Vector3(px, py, 0);
+          particles.push({
+            position: pos.clone(),
+            previous: pos.clone(),
+            original: pos.clone(),
+            invMass: y === 0 ? 0 : 1,
+            tmp: new THREE.Vector3(),
+            dragInfluence: y / segY
+          });
+        }
+      }
+
+      const constraints = [];
+      function addConstraint(a, b, rest) {
+        constraints.push([a, b, rest]);
+      }
+
+      for (let y = 0; y <= segY; y += 1) {
+        for (let x = 0; x <= segX; x += 1) {
+          if (x < segX) addConstraint(indexOf(x, y), indexOf(x + 1, y), restX);
+          if (y < segY) addConstraint(indexOf(x, y), indexOf(x, y + 1), restY);
+          if (x < segX && y < segY) {
+            addConstraint(indexOf(x, y), indexOf(x + 1, y + 1), Math.hypot(restX, restY));
+            addConstraint(indexOf(x + 1, y), indexOf(x, y + 1), Math.hypot(restX, restY));
+          }
+          if (x < segX - 1) addConstraint(indexOf(x, y), indexOf(x + 2, y), restX * 2);
+          if (y < segY - 1) addConstraint(indexOf(x, y), indexOf(x, y + 2), restY * 2);
+        }
+      }
+
+      const geometry = new THREE.PlaneGeometry(clothWidth, clothHeight, segX, segY);
+      const receiptTexture = buildReceiptTexture();
+      const receiptMaterial = new THREE.MeshPhysicalMaterial({
+        map: receiptTexture,
+        side: THREE.DoubleSide,
+        roughness: 0.94,
+        metalness: 0,
+        sheen: 0.2,
+        sheenRoughness: 0.92,
+        sheenColor: new THREE.Color(0xf7f3ea)
+      });
+
+      const receiptMesh = new THREE.Mesh(geometry, receiptMaterial);
+      receiptMesh.position.set(0, -0.55, 0.5);
+      receiptMesh.castShadow = true;
+      receiptMesh.receiveShadow = true;
+      scene.add(receiptMesh);
+
+      const clampBar = new THREE.Mesh(
+        new THREE.BoxGeometry(clothWidth + 0.3, 0.12, 0.14),
+        new THREE.MeshStandardMaterial({ color: 0x232323, roughness: 0.42, metalness: 0.08 })
+      );
+      clampBar.position.set(0, clothHeight / 2 - 0.02 - 0.55, 0.58);
+      clampBar.castShadow = true;
+      scene.add(clampBar);
+
+      const grabState = {
+        active: false,
+        index: -1,
+        depth: 0,
+        target: new THREE.Vector3()
+      };
+
+      function buildReceiptTexture() {
+        const canvas = document.createElement("canvas");
+        canvas.width = 1024;
+        canvas.height = 1600;
+        const ctx = canvas.getContext("2d");
+
+        const paper = ctx.createLinearGradient(0, 0, 0, canvas.height);
+        paper.addColorStop(0, "#fffdf8");
+        paper.addColorStop(1, "#f5f0e7");
+        ctx.fillStyle = paper;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = "rgba(0,0,0,0.02)";
+        for (let y = 0; y < canvas.height; y += 18) {
+          ctx.fillRect(0, y, canvas.width, 1);
+        }
+
+        ctx.fillStyle = "#121212";
+        ctx.textAlign = "center";
+        ctx.font = "700 58px 'IBM Plex Sans'";
+        ctx.fillText("VERY IMPORTANT RECEIPT", canvas.width / 2, 120);
+
+        ctx.fillStyle = "rgba(18,18,18,0.6)";
+        ctx.font = "500 24px 'IBM Plex Mono'";
+        ctx.fillText("printed by a physically dramatic cashier", canvas.width / 2, 168);
+
+        ctx.strokeStyle = "rgba(18,18,18,0.18)";
+        ctx.setLineDash([10, 10]);
+        ctx.beginPath();
+        ctx.moveTo(84, 210);
+        ctx.lineTo(canvas.width - 84, 210);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.textAlign = "left";
+        ctx.fillStyle = "#151515";
+        ctx.font = "600 22px 'IBM Plex Mono'";
+        const items = [
+          ["1", "Cosmic Sardines", "$12.40"],
+          ["2", "Laser Tofu Cubes", "$18.80"],
+          ["1", "Wizard Sticker Pack", "$7.20"],
+          ["4", "Pocket Meteors", "$3.10"],
+          ["1", "Emergency Pickles", "$5.60"],
+          ["1", "Tiny Disco Receipt", "$2.10"]
+        ];
+
+        let lineY = 290;
+        items.forEach(([qty, label, price]) => {
+          ctx.fillText(qty, 90, lineY);
+          ctx.fillText(label, 150, lineY);
+          ctx.textAlign = "right";
+          ctx.fillText(price, canvas.width - 90, lineY);
+          ctx.textAlign = "left";
+          lineY += 54;
+        });
+
+        ctx.strokeStyle = "rgba(18,18,18,0.12)";
+        ctx.beginPath();
+        ctx.moveTo(84, lineY + 8);
+        ctx.lineTo(canvas.width - 84, lineY + 8);
+        ctx.stroke();
+
+        ctx.fillStyle = "#cb5f28";
+        ctx.font = "700 44px 'IBM Plex Sans'";
+        ctx.fillText("ITEMS YOU ABSOLUTELY NEEDED", 88, 700);
+
+        drawDoodleMug(ctx, 100, 760);
+        drawDoodleFish(ctx, 540, 780);
+        drawDoodleFace(ctx, 210, 1030);
+        drawDoodleReceipt(ctx, 620, 1060);
+
+        ctx.fillStyle = "#151515";
+        ctx.font = "600 26px 'IBM Plex Mono'";
+        ctx.fillText("subtotal", 88, 1300);
+        ctx.textAlign = "right";
+        ctx.fillText("$46.10", canvas.width - 90, 1300);
+        ctx.textAlign = "left";
+        ctx.fillText("tax", 88, 1350);
+        ctx.textAlign = "right";
+        ctx.fillText("$4.61", canvas.width - 90, 1350);
+        ctx.textAlign = "left";
+        ctx.font = "700 46px 'IBM Plex Sans'";
+        ctx.fillText("TOTAL", 88, 1450);
+        ctx.textAlign = "right";
+        ctx.fillText("$50.71", canvas.width - 90, 1450);
+
+        ctx.textAlign = "center";
+        ctx.fillStyle = "rgba(18,18,18,0.58)";
+        ctx.font = "500 22px 'IBM Plex Mono'";
+        ctx.fillText("thank you for supporting strange groceries", canvas.width / 2, 1530);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), 8);
+        return texture;
+      }
+
+      function drawDoodleMug(ctx, x, y) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.strokeStyle = "#151515";
+        ctx.lineWidth = 10;
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.rect(0, 0, 140, 110);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(145, 50, 26, -Math.PI / 2, Math.PI / 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(34, -6);
+        ctx.bezierCurveTo(18, -44, 38, -62, 44, -90);
+        ctx.moveTo(76, -6);
+        ctx.bezierCurveTo(60, -44, 82, -62, 88, -88);
+        ctx.moveTo(116, -6);
+        ctx.bezierCurveTo(102, -42, 124, -60, 128, -86);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawDoodleFish(ctx, x, y) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.strokeStyle = "#151515";
+        ctx.lineWidth = 10;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 110, 56, 0, 0, Math.PI * 2);
+        ctx.moveTo(100, 0);
+        ctx.lineTo(164, -48);
+        ctx.lineTo(164, 48);
+        ctx.closePath();
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(-42, -10, 8, 0, Math.PI * 2);
+        ctx.fillStyle = "#151515";
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function drawDoodleFace(ctx, x, y) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.strokeStyle = "#151515";
+        ctx.lineWidth = 10;
+        ctx.beginPath();
+        ctx.arc(0, 0, 84, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(-24, -14, 10, 0, Math.PI * 2);
+        ctx.arc(24, -14, 10, 0, Math.PI * 2);
+        ctx.fillStyle = "#151515";
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(0, 18, 28, 0.12 * Math.PI, 0.88 * Math.PI);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawDoodleReceipt(ctx, x, y) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.strokeStyle = "#151515";
+        ctx.lineWidth = 10;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(160, 0);
+        ctx.lineTo(160, 160);
+        for (let i = 0; i < 6; i += 1) {
+          const px = 160 - i * 32;
+          ctx.lineTo(px - 16, 176);
+          ctx.lineTo(px - 32, 160);
+        }
+        ctx.lineTo(0, 0);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(28, 42);
+        ctx.lineTo(130, 42);
+        ctx.moveTo(28, 78);
+        ctx.lineTo(130, 78);
+        ctx.moveTo(28, 114);
+        ctx.lineTo(90, 114);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function satisfy(p1, p2, restLength) {
+        tempA.copy(p2.position).sub(p1.position);
+        const distance = tempA.length();
+        if (distance === 0) return;
+        const correction = tempA.multiplyScalar((distance - restLength) / distance);
+        const invMassSum = p1.invMass + p2.invMass;
+        if (invMassSum === 0) return;
+        if (p1.invMass > 0) p1.position.addScaledVector(correction, p1.invMass / invMassSum);
+        if (p2.invMass > 0) p2.position.addScaledVector(correction, -p2.invMass / invMassSum);
+      }
+
+      function integrate() {
+        const time = performance.now() * 0.001;
+
+        for (let i = 0; i < particles.length; i += 1) {
+          const p = particles[i];
+          if (p.invMass === 0) {
+            p.position.copy(p.original);
+            p.previous.copy(p.original);
+            continue;
+          }
+
+          tempA.copy(p.position);
+          const velocity = p.position.clone().sub(p.previous).multiplyScalar(dragDamping);
+          p.position.add(velocity);
+          p.position.add(gravity);
+
+          const sway = Math.sin(time * 1.8 + p.original.y * 0.9) * windBase * (0.35 + p.dragInfluence);
+          const flutter = Math.cos(time * 2.6 + p.original.x * 2.2) * windBase * 0.5 * p.dragInfluence;
+          p.position.x += sway;
+          p.position.z += flutter;
+
+          p.previous.copy(tempA);
+        }
+
+        if (grabState.active && grabState.index >= 0) {
+          const dragged = particles[grabState.index];
+          dragged.position.lerp(grabState.target, grabFollowStrength);
+          dragged.previous.copy(dragged.position);
+        }
+
+        for (let i = 0; i < iterations; i += 1) {
+          for (let c = 0; c < constraints.length; c += 1) {
+            const [a, b, rest] = constraints[c];
+            satisfy(particles[a], particles[b], rest);
+          }
+
+          for (let x = 0; x <= segX; x += 1) {
+            const p = particles[indexOf(x, 0)];
+            p.position.copy(p.original);
+            p.previous.copy(p.original);
+          }
+        }
+
+        for (let i = 0; i < particles.length; i += 1) {
+          particles[i].position.z = THREE.MathUtils.clamp(particles[i].position.z, -1.25, 1.25);
+        }
+      }
+
+      function updateGeometry() {
+        const positions = geometry.attributes.position.array;
+        for (let y = 0; y <= segY; y += 1) {
+          for (let x = 0; x <= segX; x += 1) {
+            const particle = particles[indexOf(x, y)];
+            const i = indexOf(x, y) * 3;
+            positions[i] = particle.position.x;
+            positions[i + 1] = particle.position.y;
+            positions[i + 2] = particle.position.z;
+          }
+        }
+        geometry.attributes.position.needsUpdate = true;
+        geometry.computeVertexNormals();
+      }
+
+      function updatePointer(event) {
+        pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+        pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+      }
+
+      function setGrabTarget(event) {
+        updatePointer(event);
+        raycaster.setFromCamera(pointer, camera);
+        if (raycaster.ray.intersectPlane(dragPlane, planePoint)) {
+          grabState.target.copy(planePoint).sub(receiptMesh.position);
+          grabState.target.z = THREE.MathUtils.clamp(grabState.target.z, -1.2, 1.2);
+        }
+      }
+
+      function findParticleFromIntersection(hit) {
+        const uv = hit.uv;
+        if (!uv) return -1;
+        const x = Math.round(uv.x * segX);
+        const y = Math.round((1 - uv.y) * segY);
+        const clampedY = THREE.MathUtils.clamp(y, 2, segY);
+        return indexOf(x, clampedY);
+      }
+
+      function onPointerDown(event) {
+        if (event.button !== 0) return;
+        updatePointer(event);
+        raycaster.setFromCamera(pointer, camera);
+        const hits = raycaster.intersectObject(receiptMesh, false);
+        if (!hits.length) return;
+        const index = findParticleFromIntersection(hits[0]);
+        if (index < 0) return;
+
+        grabState.active = true;
+        grabState.index = index;
+        dragPlane.set(new THREE.Vector3(0, 0, 1), -(hits[0].point.z));
+        setGrabTarget(event);
+        renderer.domElement.classList.add("is-grabbing");
+      }
+
+      function onPointerMove(event) {
+        if (!grabState.active) return;
+        setGrabTarget(event);
+      }
+
+      function releaseGrab() {
+        grabState.active = false;
+        grabState.index = -1;
+        renderer.domElement.classList.remove("is-grabbing");
+      }
+
+      renderer.domElement.addEventListener("pointerdown", onPointerDown);
+      window.addEventListener("pointermove", onPointerMove);
+      window.addEventListener("pointerup", releaseGrab);
+      window.addEventListener("pointerleave", releaseGrab);
+
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      function animate() {
+        requestAnimationFrame(animate);
+        integrate();
+        updateGeometry();
+
+        receiptMesh.rotation.x = -0.08;
+        receiptMesh.rotation.y = Math.sin(performance.now() * 0.00035) * 0.08;
+        receiptMesh.rotation.z = Math.sin(performance.now() * 0.0007) * 0.02;
+
+        renderer.render(scene, camera);
+      }
+
+      animate();
+    </script>
+  </body>
+</html>
