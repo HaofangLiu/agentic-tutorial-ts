@@ -1,4 +1,4 @@
-import "dotenv/config";
+import '../../load-env.mjs';
 
 const testWithParams = async (params) => {
     console.log('\nTesting with params:');

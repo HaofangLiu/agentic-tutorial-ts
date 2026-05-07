@@ -1,0 +1,31 @@
+{
+  "name": "tool-test",
+  "version": "1.0.0",
+  "description": "LangChain and MCP tools testing collection",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "tool:mcp-test": "node tool/src/mcp-test.mjs",
+    "tool:mini-cursor": "node tool/src/mini-cursor.mjs",
+    "tool:hello": "node tool/src/hello-langchain.mjs",
+    "tool:file-read": "node tool/src/tool-file-read.mjs",
+    "tool:mcp-server": "node tool/src/my-mcp-server.mjs"
+  },
+  "packageManager": "pnpm@10.16.1",
+  "dependencies": {
+    "@langchain/classic": "^1.0.31",
+    "@langchain/community": "^1.1.27",
+    "@langchain/core": "^1.1.40",
+    "@langchain/mcp-adapters": "^1.1.3",
+    "@langchain/openai": "^1.4.4",
+    "@langchain/textsplitters": "^1.0.1",
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "@zilliz/milvus2-sdk-node": "^2.5.9",
+    "chalk": "^5.6.2",
+    "cheerio": "^1.2.0",
+    "dotenv": "^17.4.2",
+    "js-tiktoken": "^1.0.21",
+    "langchain": "^1.3.3",
+    "zod": "^4.3.6"
+  }
+}

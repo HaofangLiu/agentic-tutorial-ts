@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import '../../load-env.mjs';
 import { ChatOpenAI } from '@langchain/openai';
 import { HumanMessage, SystemMessage, ToolMessage } from '@langchain/core/messages';
 import { executeCommandTool, listDirectoryTool, readFileTool, writeFileTool } from './all-tools.mjs';

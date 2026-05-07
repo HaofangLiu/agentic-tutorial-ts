@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import '../../load-env.mjs';
 import { ChatOpenAI } from'@langchain/openai';
 import { JsonOutputToolsParser } from'@langchain/core/output_parsers/openai_tools';
 import { z } from'zod';

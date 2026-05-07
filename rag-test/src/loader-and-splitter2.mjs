@@ -1,4 +1,4 @@
-import "dotenv/config";
+import '../../load-env.mjs';
 import "cheerio";
 import { ChatOpenAI, OpenAIEmbeddings } from "@langchain/openai";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";

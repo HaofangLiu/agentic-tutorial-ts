@@ -1,7 +1,5 @@
 import { ChatOpenAI } from '@langchain/openai';
-import dotenv from 'dotenv';
-
-dotenv.config();
+import '../../load-env.mjs';
 
 const model = new ChatOpenAI({
     modelName: process.env.MODEL_NAME || "MiniMax-M2.7-free",

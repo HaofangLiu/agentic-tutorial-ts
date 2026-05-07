@@ -1,7 +1,7 @@
 // CharacterTextSplitter 非常死板，你告诉它按照换行符分割，它就会严格按照这个，就算超过了 chunk size 也不拆分。
 
 // 所以一般还是用 RecursiveCharacterTextSplitter
-import "dotenv/config";
+import '../../load-env.mjs';
 import "cheerio";
 import { CharacterTextSplitter } from "@langchain/textsplitters";
 import { Document } from "@langchain/core/documents";

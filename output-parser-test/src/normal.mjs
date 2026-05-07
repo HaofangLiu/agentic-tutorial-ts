@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import '../../load-env.mjs';
 import { ChatOpenAI } from '@langchain/openai';
 
 // 初始化模型

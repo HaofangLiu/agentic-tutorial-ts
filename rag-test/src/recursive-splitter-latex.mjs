@@ -1,4 +1,4 @@
-import "dotenv/config";
+import '../../load-env.mjs';
 import "cheerio";
 import { Document } from "@langchain/core/documents";
 import { LatexTextSplitter } from "@langchain/textsplitters";

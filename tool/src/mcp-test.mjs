@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import '../../load-env.mjs';
 import { MultiServerMCPClient } from '@langchain/mcp-adapters';
 import { ChatOpenAI } from '@langchain/openai';
 import chalk from 'chalk';

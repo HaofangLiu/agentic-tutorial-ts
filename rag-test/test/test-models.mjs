@@ -1,4 +1,4 @@
-import "dotenv/config";
+import '../../load-env.mjs';
 
 const testModel = async (modelName) => {
     console.log(`\nTesting model: ${modelName}`);

@@ -1,4 +1,4 @@
-import "dotenv/config";
+import '../../load-env.mjs';
 
 const testEmbeddingAPI = async () => {
     console.log('Testing Embedding API...');

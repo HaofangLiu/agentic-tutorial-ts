@@ -1,4 +1,4 @@
-import "dotenv/config";
+import '../../load-env.mjs';
 
 const testModelScopeAPI = async () => {
     const response = await fetch('https://api-inference.modelscope.cn/v1/chat/completions', {

@@ -1,4 +1,4 @@
-import "dotenv/config";
+import '../../load-env.mjs';
 import { MilvusClient } from '@zilliz/milvus2-sdk-node';
 
 const COLLECTION_NAME = 'ai_diary';

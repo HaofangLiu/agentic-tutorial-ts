@@ -1,4 +1,4 @@
-import "dotenv/config";
+import '../../load-env.mjs';
 import { ChatOpenAI, OpenAIEmbeddings } from "@langchain/openai"
 import { Document } from "@langchain/core/documents"
 import { MemoryVectorStore } from "@langchain/classic/vectorstores/memory";

@@ -1,5 +1,5 @@
 // 绝大多数情况下，用这个就可以了。
-import "dotenv/config";
+import '../../load-env.mjs';
 import "cheerio";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { Document } from "@langchain/core/documents";

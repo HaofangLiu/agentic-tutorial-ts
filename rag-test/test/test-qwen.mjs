@@ -1,4 +1,4 @@
-import "dotenv/config";
+import '../../load-env.mjs';
 
 const testQwen = async () => {
     console.log('Testing Qwen3-8B model...');

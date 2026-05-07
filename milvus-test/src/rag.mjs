@@ -1,4 +1,4 @@
-import "dotenv/config";
+import '../../load-env.mjs';
 import { MilvusClient, MetricType } from '@zilliz/milvus2-sdk-node';
 import { ChatOpenAI, OpenAIEmbeddings } from "@langchain/openai";
 
