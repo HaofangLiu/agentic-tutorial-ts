@@ -4,11 +4,11 @@ import { JsonOutputToolsParser } from'@langchain/core/output_parsers/openai_tool
 import { z } from'zod';
 
 const model = new ChatOpenAI({
-    modelName: process.env.CHAT_MODEL_NAME,
-    apiKey: process.env.CHAT_API_KEY,
+    modelName: process.env.NVIDIA_CHAT_MODEL,
+    apiKey: process.env.NVIDIA_API_KEY,
     temperature: 0,
     configuration: {
-        baseURL: process.env.CHAT_BASE_URL,
+        baseURL: process.env.NVIDIA_BASE_URL,
     },
 });
 

@@ -6,11 +6,11 @@ import fs from 'node:fs/promises';
 import { z } from 'zod';
 
 const model = new ChatOpenAI({
-    modelName: process.env.OPENAI_MODEL_NAME,
-    apiKey: process.env.OPENAI_API_KEY,
+    modelName: process.env.DMX_CHAT_MODEL_QWEN,
+    apiKey: process.env.DMX_API_KEY,
     temperature: 0,
     configuration: {
-        baseURL: process.env.OPENAI_BASE_URL,
+        baseURL: process.env.DMX_BASE_URL,
     },
 });
 

@@ -15,10 +15,10 @@ const BOOK_NAME = parse(EPUB_FILE).name;
 
 // 初始化 Embeddings 模型
 const embeddings = new OpenAIEmbeddings({
-    apiKey: process.env.EMBEDDINGS_API_KEY,
-    model: process.env.EMBEDDINGS_MODEL_NAME,
+    apiKey: process.env.MODELSCOPE_API_KEY,
+    model: process.env.MODELSCOPE_EMBEDDING_MODEL_4B,
     configuration: {
-        baseURL: process.env.EMBEDDINGS_BASE_URL
+        baseURL: process.env.MODELSCOPE_BASE_URL
     },
     dimensions: VECTOR_DIM
 });

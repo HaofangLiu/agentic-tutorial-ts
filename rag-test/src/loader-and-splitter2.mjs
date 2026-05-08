@@ -7,18 +7,18 @@ import { CheerioWebBaseLoader } from "@langchain/community/document_loaders/web/
 
 const model = new ChatOpenAI({
     temperature: 0,
-    model: process.env.CHAT_MODEL_NAME,
-    apiKey: process.env.CHAT_API_KEY,
+    model: process.env.DMX_CHAT_MODEL_QWEN,
+    apiKey: process.env.DMX_API_KEY,
     configuration: {
-        baseURL: process.env.CHAT_BASE_URL,
+        baseURL: process.env.DMX_BASE_URL,
     },
 });
 
 const embeddings = new OpenAIEmbeddings({
-    apiKey: process.env.EMBEDDINGS_API_KEY,
-    model: process.env.EMBEDDINGS_MODEL_NAME,
+    apiKey: process.env.MODELSCOPE_API_KEY,
+    model: process.env.MODELSCOPE_EMBEDDING_MODEL,
     configuration: {
-        baseURL: process.env.EMBEDDINGS_BASE_URL,
+        baseURL: process.env.MODELSCOPE_BASE_URL,
     },
 });
 

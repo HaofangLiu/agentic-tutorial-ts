@@ -5,10 +5,10 @@ const testModelScopeAPI = async () => {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+            'Authorization': `Bearer ${process.env.MODELSCOPE_API_KEY}`
         },
         body: JSON.stringify({
-            model: process.env.MODEL_NAME,
+            model: process.env.DMX_CHAT_MODEL_QWEN,
             messages: [{ role: 'user', content: '你好，请简单回复' }],
             stream: false
         })

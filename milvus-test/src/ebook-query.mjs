@@ -6,10 +6,10 @@ const COLLECTION_NAME = 'ebook_collection';
 const VECTOR_DIM = 1024;
 
 const embeddings = new OpenAIEmbeddings({
-    apiKey: process.env.EMBEDDINGS_API_KEY,
-    model: process.env.EMBEDDINGS_MODEL_NAME,
+    apiKey: process.env.MODELSCOPE_API_KEY,
+    model: process.env.MODELSCOPE_EMBEDDING_MODEL_4B,
     configuration: {
-        baseURL: process.env.EMBEDDINGS_BASE_URL
+        baseURL: process.env.MODELSCOPE_BASE_URL
     },
     dimensions: VECTOR_DIM
 });

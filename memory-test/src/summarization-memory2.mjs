@@ -5,11 +5,11 @@ import { HumanMessage, SystemMessage, AIMessage, getBufferString } from "@langch
 import { getEncoding } from "js-tiktoken";
 
 const model = new ChatOpenAI({
-    modelName: process.env.MODEL_NAME,
-    apiKey: process.env.OPENAI_API_KEY,
+    modelName: process.env.DMX_CHAT_MODEL,
+    apiKey: process.env.DMX_API_KEY,
     temperature: 0,
     configuration: {
-        baseURL: process.env.OPENAI_BASE_URL,
+        baseURL: process.env.DMX_BASE_URL,
     },
 });
 
