@@ -12,7 +12,6 @@
     "tool:mcp-server": "node tool/src/my-mcp-server.mjs",
     "tool:structured-json-schema": "node output-parser-test/src/structured-json-schema.mjs"
   },
-  "packageManager": "pnpm@10.16.1",
   "dependencies": {
     "@langchain/classic": "^1.0.31",
     "@langchain/community": "^1.1.27",
