@@ -14,9 +14,10 @@
 6. [output-parser-test — 结构化输出解析](#output-parser-test--结构化输出解析)
 7. [prompt-template-test — Prompt 模板工程](#prompt-template-test--prompt-模板工程)
 8. [runnable-test — LangChain Runnable / LCEL](#runnable-test--langchain-runnable--lcel)
-9. [threejs-test — Three.js WebGL 可视化](#threejs-test--threejs-webgl-可视化)
-10. [通用 AI 知识点](#通用-ai-知识点)
-11. [高频面试题](#高频面试题)
+9. [cases — 综合案例与 Runnable 增强能力](#cases--综合案例与-runnable-增强能力)
+10. [threejs-test — Three.js WebGL 可视化](#threejs-test--threejs-webgl-可视化)
+11. [通用 AI 知识点](#通用-ai-知识点)
+12. [高频面试题](#高频面试题)
 
 ---
 
@@ -31,6 +32,7 @@
 | `output-parser-test` | 结构化输出 / 流式解析 / XML 解析 | JsonOutputParser, StructuredOutputParser, withStructuredOutput, XMLOutputParser |
 | `prompt-template-test` | Prompt 模板化 / Few-shot / ExampleSelector / Pipeline | PromptTemplate, ChatPromptTemplate, FewShotPromptTemplate, PipelinePromptTemplate, Milvus |
 | `runnable-test` | Runnable 链式编排 / 分支 / 路由 / 消息历史 | LCEL, RunnableSequence, RunnableLambda, RunnableMap, RunnableBranch, RunnableWithMessageHistory |
+| `cases` | 综合案例 / Runnable 运行时增强 / MCP Agent / 电子书 RAG | withRetry, withFallbacks, withConfig, callbacks, RunnableBranch, MultiServerMCPClient, Milvus |
 | `threejs-test` | WebGL 物理模拟 / 滚动序列帧动画 | Three.js, Verlet 积分, Canvas API, IntersectionObserver |
 
 ### 运行与环境约定
@@ -749,6 +751,7 @@ Runnable 解决的是"如何把多个处理步骤稳定组合起来"的问题：
 - 按条件选择分支：`RunnableBranch`。
 - 按 key 路由到指定 runnable：`RouterRunnable`。
 - 给链补上对话历史：`RunnableWithMessageHistory`。
+- 运行时增强：`withRetry` 做失败重试，`withFallbacks` 做备用链路，`withConfig` 绑定标签、元数据和可配置参数，`callbacks` 观测链路开始、结束和异常。
 
 ### 关键 API
 
@@ -817,6 +820,54 @@ await chain.invoke(
     { question: "我刚才说我来自哪里？" },
     { configurable: { sessionId: "user-123" } },
 );
+
+// 8. withRetry：给不稳定节点增加有限重试
+const unstableRunnable = RunnableLambda.from(async (input) => {
+    if (Math.random() < 0.7) {
+        throw new Error("模拟的随机错误");
+    }
+    return `成功处理: ${input}`;
+});
+const runnableWithRetry = unstableRunnable.withRetry({
+    stopAfterAttempt: 5,
+});
+
+// 9. withFallbacks：主链失败后按顺序尝试备用 runnable
+const translator = premiumTranslator.withFallbacks({
+    fallbacks: [standardTranslator, localTranslator],
+});
+
+// 10. withConfig：给整条链绑定 tags / metadata / configurable
+const chainWithConfig = chain.withConfig({
+    tags: ["demo", "withConfig"],
+    metadata: { demoName: "RunnableWithConfig" },
+    configurable: {
+        userId: "user-123",
+        role: "管理员",
+        locale: "zh-CN",
+    },
+});
+
+// RunnableLambda 的第二个参数可以读取运行时 config
+const fetchUser = RunnableLambda.from(async (input, config) => {
+    const userId = config?.configurable?.userId;
+    return { input, userId };
+});
+
+// 11. callbacks：观测 runnable 的生命周期
+const callback = {
+    handleChainStart(chain) {
+        console.log("[START]", chain?.id?.at(-1) ?? "unknown");
+    },
+    handleChainEnd(output) {
+        console.log("[END]", output);
+    },
+    handleChainError(err) {
+        console.log("[ERROR]", err.message);
+    },
+};
+
+await chain.invoke("hello world", { callbacks: [callback] });
 ```
 
 ### 项目文件说明
@@ -839,6 +890,105 @@ await chain.invoke(
 2. 再看 `runnableLambda.mjs` 和 `runnableMap.mjs`，理解普通函数如何接入链，以及同一输入如何分发到多个节点。
 3. 然后看 `RunnablePick.mjs`、`RunnableEach.mjs`、`runnableBranch.mjs`、`RouterRunnable.mjs`，理解对象字段选择、数组批处理、条件分支和显式路由。
 4. 最后看 `RunnableWithMessageHistory.mjs`，把 Runnable 和记忆管理章节串起来：历史不是模型自动拥有的，而是通过 sessionId 找到消息历史后注入 Prompt。
+
+---
+
+## cases — 综合案例与 Runnable 增强能力
+
+### 核心概念
+
+`cases` 目录不是新的独立基础知识模块，而是把前面章节里的 LangChain 能力组合成更接近业务链路的案例：
+
+1. Runnable 运行时能力：失败重试、备用链路、配置注入、生命周期回调。
+2. MCP Agent：模型判断是否调用工具，工具结果通过 `ToolMessage` 写回消息历史，再进入下一轮推理。
+3. 电子书 RAG：把 Milvus 检索、上下文构造、Prompt、模型和输出解析全部封装进一条 `RunnableSequence`。
+
+### Runnable 增强能力
+
+| 能力 | 作用 | 适用场景 |
+|------|------|----------|
+| `withRetry` | 对同一个 runnable 做有限次数重试 | 临时网络抖动、限流、偶发失败 |
+| `withFallbacks` | 主 runnable 失败后依次尝试备用 runnable | 多模型、多服务商、主备服务切换 |
+| `withConfig` | 给 runnable 绑定 tags、metadata、configurable 参数 | 用户身份、角色权限、语言区域、链路追踪 |
+| `callbacks` | 监听链路开始、结束和异常 | 调试、日志、可观测性、教学演示 |
+
+关键点：
+
+- `withRetry` 解决的是"同一件事再试几次"，不是换方案。
+- `withFallbacks` 解决的是"主服务失败后换备用服务"，顺序就是优先级。
+- `withConfig` 传入的是运行时配置，不应该混进业务输入对象里；链节点通过第二个参数 `config` 读取。
+- `callbacks` 适合观察链路执行过程，不应该承载核心业务逻辑。
+
+### MCP Agent 链路模式
+
+`cases/mcp-test.mjs` 把 MCP 工具调用循环拆成 Runnable 编排：
+
+```
+用户问题
+  ↓
+ChatPromptTemplate + MessagesPlaceholder
+  ↓
+绑定 MCP tools 的 ChatOpenAI
+  ↓
+RunnableBranch 判断是否有 tool_calls
+  ├─ 无 tool_calls：写入最终 AIMessage，done = true
+  └─ 有 tool_calls：执行工具，生成 ToolMessage，写回 messages，done = false
+  ↓
+外层 for 循环继续下一轮，直到 done 或达到 maxIterations
+```
+
+这个案例的重点不是 MCP 本身，而是把 Agent 的"一次思考 + 可能调用工具 + 写回结果"封装成一个可重复执行的 `agentStepChain`。外层循环只负责控制最大迭代次数，真正的状态转换放在 Runnable 链里。
+
+### 电子书 RAG 链路模式
+
+`cases/ebook-reader-rag.mjs` 使用原生 Milvus SDK 和 LCEL 组合完整问答链：
+
+```
+{ question, k }
+  ↓
+milvusSearch：问题向量化 + Milvus Top-K 检索
+  ↓
+buildPromptInput：打印检索结果 + 构造 context
+  ↓
+无上下文判断：没有结果则返回固定提示；有结果则继续
+  ↓
+PromptTemplate
+  ↓
+ChatOpenAI
+  ↓
+StringOutputParser
+```
+
+这里的工程重点是把检索结果先整理成稳定的中间结构：
+
+```js
+{
+    question,
+    retrievedContent: [
+        { id, book_id, chapter_num, index, content, score }
+    ]
+}
+```
+
+这样后续节点只依赖清晰字段，不需要知道 Milvus 原始返回格式。
+
+### 项目文件说明
+
+| 文件 | 内容 |
+|------|------|
+| `RunnableWithRetry.mjs` | 用一个随机失败的 `RunnableLambda` 演示 `withRetry({ stopAfterAttempt })` |
+| `RunnableWithFallbacks.mjs` | 模拟高级、标准、本地三个翻译服务，演示 `withFallbacks` 的主备顺序 |
+| `RunnableWithConfig.mjs` | 通过 `config.configurable` 传入 `userId`、`role`、`locale`，演示配置注入、权限判断和本地化文案 |
+| `RunnableWithCallbacks.mjs` | 对清洗、分词、统计链路挂载 callbacks，观察每个 runnable 的开始、结束和错误 |
+| `mcp-test.mjs` | 连接高德地图 MCP 和 Chrome DevTools MCP，用 `RunnableBranch` 实现多轮工具调用 Agent |
+| `ebook-reader-rag.mjs` | 从 Milvus 检索《天龙八部》片段，构造上下文后流式生成回答 |
+
+### 学习思路
+
+1. 先看四个 `RunnableWith*.mjs` 小案例，理解 Runnable 的稳定性、配置和观测能力。
+2. 再看 `mcp-test.mjs`，重点跟踪 `state.messages` 如何追加 `AIMessage` 和 `ToolMessage`。
+3. 最后看 `ebook-reader-rag.mjs`，把 RAG 章节、Milvus 章节和 Runnable 章节串起来。
+4. 运行案例前先确认依赖的环境变量和外部服务：MCP 案例需要 DMX、高德地图和 Chrome DevTools MCP；电子书 RAG 案例需要 Milvus 已启动、集合已建好并完成电子书向量写入。
 
 ---
 
@@ -972,6 +1122,8 @@ ToolMessage     → 工具执行结果（需要 tool_call_id 对应）
 - `RunnableBranch` 是条件分支，按数组顺序检查条件，先命中的分支会执行。
 - `RouterRunnable` 是显式路由，输入里要有 `key` 和 `input`，`key` 决定调用哪个 runnable。
 - `RunnableWithMessageHistory` 不会凭空产生记忆，它依赖 `getMessageHistory(sessionId)` 找到历史，并通过 `inputMessagesKey` / `historyMessagesKey` 接到 Prompt。
+- `withRetry`、`withFallbacks`、`withConfig`、`callbacks` 不改变 Runnable 的核心抽象，它们是在执行层补充稳定性、配置和可观测性。
+- Agent 工具循环也可以拆成 Runnable：一次 step 负责模型输出、工具调用分支和消息回写，外层循环只控制迭代次数。
 
 ### 向量索引类型（Milvus）
 
@@ -1010,6 +1162,15 @@ ToolMessage     → 工具执行结果（需要 tool_call_id 对应）
 
 **Q: RunnableWithMessageHistory 的关键配置是什么？**
 > 关键是 `getMessageHistory`、`inputMessagesKey`、`historyMessagesKey` 和调用时的 `configurable.sessionId`。`sessionId` 决定使用哪份历史，`historyMessagesKey` 决定历史插入 Prompt 的哪个变量。
+
+**Q: withRetry 和 withFallbacks 有什么区别？**
+> `withRetry` 是同一个 runnable 失败后重复尝试，适合偶发错误；`withFallbacks` 是主 runnable 失败后换备用 runnable，适合主备模型、主备服务或降级服务。前者强调重试次数，后者强调备用链路优先级。
+
+**Q: withConfig 适合传什么，不适合传什么？**
+> `withConfig` 适合传运行时配置，例如 tags、metadata、userId、role、locale、sessionId 等。核心业务输入仍应放在 `invoke(input)` 的 input 里，否则链路的数据流会变得不清晰。
+
+**Q: callbacks 和在节点里 console.log 有什么区别？**
+> `callbacks` 是 LangChain 提供的生命周期钩子，可以统一观察链路开始、结束和异常；节点内部 `console.log` 更适合临时调试。生产中的日志、追踪、监控更适合放在 callbacks 或 tracing 系统里。
 
 ### RAG 相关
 
